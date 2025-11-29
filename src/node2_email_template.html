@@ -24,7 +24,7 @@
             padding: 40px 0;
         }
         .container {
-            max-width: 600px;
+            max-width: 640px;
             margin: 0 auto;
             background-color: #ffffff;
             border-radius: 12px;
@@ -47,57 +47,65 @@
             font-size: 14px;
             margin-top: 8px;
         }
+        .header .meta {
+            color: rgba(255, 255, 255, 0.75);
+            font-size: 12px;
+            margin-top: 4px;
+        }
         .content {
             padding: 32px 24px;
         }
         .greeting {
             font-size: 18px;
             color: #1a1a2e;
-            margin-bottom: 24px;
-        }
-        .intro {
-            color: #4a4a68;
-            font-size: 15px;
-            margin-bottom: 32px;
-            padding-bottom: 24px;
-            border-bottom: 1px solid #e8e8ed;
+            margin-bottom: 8px;
         }
 
-        /* Clusters Section */
-        .clusters-section {
-            margin-bottom: 32px;
+        /* Section Headers */
+        .section-header {
+            display: flex;
+            align-items: center;
+            margin: 32px 0 20px 0;
+            padding-top: 24px;
+            border-top: 2px solid #e8e8ed;
+        }
+        .section-header:first-of-type {
+            margin-top: 0;
+            padding-top: 0;
+            border-top: none;
+        }
+        .section-number {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #ffffff;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 4px 10px;
+            border-radius: 12px;
+            margin-right: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
         .section-title {
-            font-size: 13px;
-            font-weight: 600;
-            color: #667eea;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-bottom: 16px;
-        }
-        .cluster {
-            background-color: #f8f9fc;
-            border-radius: 8px;
-            padding: 16px;
-            margin-bottom: 12px;
-            border-left: 4px solid #667eea;
-        }
-        .cluster-name {
-            font-weight: 600;
+            font-size: 20px;
+            font-weight: 700;
             color: #1a1a2e;
-            font-size: 15px;
-            margin-bottom: 6px;
-        }
-        .cluster-summary {
-            color: #4a4a68;
-            font-size: 14px;
             margin: 0;
         }
 
-        /* Articles Section */
-        .articles-section {
-            margin-bottom: 32px;
+        /* The Landscape */
+        .landscape-content {
+            color: #2d2d44;
+            font-size: 15px;
+            line-height: 1.75;
         }
+        .landscape-content p {
+            margin: 0 0 16px 0;
+        }
+        .landscape-content p:last-child {
+            margin-bottom: 0;
+        }
+
+        /* Top 5 Articles */
         .article {
             padding: 20px 0;
             border-bottom: 1px solid #e8e8ed;
@@ -116,7 +124,7 @@
             line-height: 24px;
             text-align: center;
             border-radius: 50%;
-            margin-right: 12px;
+            margin-right: 10px;
         }
         .article-source {
             display: inline-block;
@@ -145,14 +153,12 @@
             line-height: 1.6;
         }
         .article-why {
-            background-color: #fef9e7;
+            background-color: #f0f4ff;
             border-radius: 6px;
             padding: 12px;
             font-size: 13px;
-            color: #856404;
-        }
-        .article-why strong {
-            color: #856404;
+            color: #4a5568;
+            border-left: 3px solid #667eea;
         }
         .article-keywords {
             margin-top: 12px;
@@ -167,10 +173,68 @@
             margin-right: 6px;
             margin-bottom: 6px;
         }
-        .article-score {
-            font-size: 12px;
-            color: #28a745;
-            margin-top: 8px;
+
+        /* Deep Dives */
+        .deep-dive {
+            background-color: #fafbfc;
+            border-radius: 10px;
+            padding: 24px;
+            margin-bottom: 20px;
+            border: 1px solid #e8e8ed;
+        }
+        .deep-dive:last-child {
+            margin-bottom: 0;
+        }
+        .deep-dive-topic {
+            font-size: 18px;
+            font-weight: 700;
+            color: #1a1a2e;
+            margin: 0 0 8px 0;
+        }
+        .deep-dive-hook {
+            font-size: 15px;
+            color: #667eea;
+            font-style: italic;
+            margin-bottom: 16px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid #e8e8ed;
+        }
+        .deep-dive-analysis {
+            color: #2d2d44;
+            font-size: 14px;
+            line-height: 1.7;
+        }
+        .deep-dive-analysis p {
+            margin: 0 0 12px 0;
+        }
+        .deep-dive-analysis p:last-child {
+            margin-bottom: 0;
+        }
+        .deep-dive-links {
+            margin-top: 16px;
+            padding-top: 12px;
+            border-top: 1px solid #e8e8ed;
+        }
+        .deep-dive-links-label {
+            font-size: 11px;
+            font-weight: 600;
+            color: #6c757d;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+        .deep-dive-links a {
+            display: block;
+            color: #667eea;
+            font-size: 13px;
+            text-decoration: none;
+            margin-bottom: 4px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .deep-dive-links a:hover {
+            text-decoration: underline;
         }
 
         /* Footer */
@@ -188,13 +252,18 @@
             color: #667eea;
             text-decoration: none;
         }
+        .topics-list {
+            font-size: 12px;
+            color: #868e96;
+            margin-bottom: 12px;
+        }
         .unsubscribe {
             font-size: 12px;
             color: #adb5bd;
         }
 
         /* Responsive */
-        @media only screen and (max-width: 620px) {
+        @media only screen and (max-width: 660px) {
             .container {
                 margin: 0 16px;
             }
@@ -207,6 +276,9 @@
             .header h1 {
                 font-size: 24px;
             }
+            .deep-dive {
+                padding: 16px;
+            }
         }
     </style>
 </head>
@@ -217,6 +289,7 @@
             <div class="header">
                 <h1>Your AI Briefing</h1>
                 <div class="date">{{ briefing_date }}</div>
+                <div class="meta">{{ articles_analyzed }} articles from {{ sources_count }} sources</div>
             </div>
 
             <!-- Content -->
@@ -225,26 +298,21 @@
                     Hi {{ user_name }},
                 </div>
 
-                <div class="intro">
-                    Here are today's top AI stories, curated based on your interests.
-                    We analyzed {{ articles_analyzed }} articles to bring you these {{ article_count }} most relevant updates.
+                <!-- Section 1: The Landscape -->
+                <div class="section-header">
+                    <span class="section-number">1</span>
+                    <h2 class="section-title">The Landscape</h2>
+                </div>
+                <div class="landscape-content">
+                    {{ landscape | replace('\n\n', '</p><p>') | replace('\n', ' ') | safe }}
                 </div>
 
-                <!-- Clusters Overview -->
-                <div class="clusters-section">
-                    <div class="section-title">Today's Themes</div>
-                    {% for cluster in clusters %}
-                    <div class="cluster">
-                        <div class="cluster-name">{{ cluster.cluster_name }}</div>
-                        <p class="cluster-summary">{{ cluster.summary }}</p>
-                    </div>
-                    {% endfor %}
+                <!-- Section 2: Your Top 5 -->
+                <div class="section-header">
+                    <span class="section-number">2</span>
+                    <h2 class="section-title">Your Top 5</h2>
                 </div>
-
-                <!-- Top Articles -->
                 <div class="articles-section">
-                    <div class="section-title">Top Stories</div>
-
                     {% for article in top_5_articles %}
                     <div class="article">
                         <span class="article-rank">{{ article.rank }}</span>
@@ -256,19 +324,44 @@
 
                         <p class="article-summary">{{ article.summary }}</p>
 
+                        {% if article.why_selected %}
                         <div class="article-why">
-                            <strong>Why it matters:</strong> {{ article.why_it_matters }}
+                            {{ article.why_selected }}
                         </div>
+                        {% endif %}
 
+                        {% if article.keywords %}
                         <div class="article-keywords">
                             {% for keyword in article.keywords %}
                             <span class="keyword">{{ keyword }}</span>
                             {% endfor %}
                         </div>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
 
-                        <div class="article-score">
-                            Relevance: {{ "%.0f"|format(article.score * 100) }}% match to your interests
+                <!-- Section 3: Deep Dives -->
+                <div class="section-header">
+                    <span class="section-number">3</span>
+                    <h2 class="section-title">Deep Dives</h2>
+                </div>
+                <div class="deep-dives-section">
+                    {% for dive in deep_dives %}
+                    <div class="deep-dive">
+                        <h3 class="deep-dive-topic">{{ dive.topic }}</h3>
+                        <div class="deep-dive-hook">{{ dive.hook }}</div>
+                        <div class="deep-dive-analysis">
+                            <p>{{ dive.analysis | replace('\n\n', '</p><p>') | replace('\n', ' ') | safe }}</p>
                         </div>
+                        {% if dive.related_articles %}
+                        <div class="deep-dive-links">
+                            <div class="deep-dive-links-label">Related Articles</div>
+                            {% for url in dive.related_articles %}
+                            <a href="{{ url }}" target="_blank">{{ url }}</a>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
                     </div>
                     {% endfor %}
                 </div>
@@ -276,9 +369,9 @@
 
             <!-- Footer -->
             <div class="footer">
-                <p>
+                <div class="topics-list">
                     Your topics: {{ user_topics | join(', ') }}
-                </p>
+                </div>
                 <p>
                     <a href="{{ preferences_url }}">Update your preferences</a>
                 </p>

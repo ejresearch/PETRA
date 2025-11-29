@@ -1,12 +1,16 @@
 """
 Node 2: Daily Briefing Generator
 
-Complete workflow implementation:
-1. Reads user profiles from storage (Google Sheets/JSONL)
-2. Fetches AI newsletter articles via MCP server
-3. Summarizes & classifies articles using LLM
-4. Selects top 5 & clusters them
-5. Sends personalized email briefing
+Generates personalized AI briefings with three sections:
+1. The Landscape - Overview of what's happening across AI today
+2. Your Top 5 - Personalized article picks based on user topics
+3. Three Deep Dives - Hot topics with substantive analysis
+
+Architecture:
+- 20 per-site agents process articles in parallel
+- Landscape generator synthesizes the big picture
+- Top 5 selector ranks by user relevance
+- Deep dive generator analyzes hot themes
 
 Can be run standalone or triggered by Enso workflow.
 """
@@ -19,11 +23,18 @@ import logging
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Any
 from pathlib import Path
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from jinja2 import Template
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+
+from prompts import (
+    build_site_agent_prompt,
+    build_landscape_prompt,
+    build_top5_prompt,
+    build_deep_dive_prompt
+)
 
 # Configure logging
 logging.basicConfig(
@@ -96,28 +107,50 @@ class Article:
 
 @dataclass
 class ProcessedArticle:
-    """Article with LLM-generated metadata."""
+    """Article processed by per-site agent."""
     source: str
     url: str
     title: str
-    published: str
-    text: str
     summary: str
+    relevance: float
     keywords: List[str]
-    why_it_matters: str
-    matched_topics: List[str]
-    relevance_score: float
-    final_score: float
+    why_selected: str = ""  # Added by top-5 selector
     rank: int = 0
 
 
 @dataclass
-class Cluster:
-    """Article cluster from LLM."""
-    cluster_id: str
-    cluster_name: str
-    indices: List[int]
-    summary: str
+class Landscape:
+    """The Landscape section - overview of AI today."""
+    content: str  # 3-4 paragraphs of prose
+    generated_at: str = ""
+
+    def __post_init__(self):
+        if not self.generated_at:
+            self.generated_at = datetime.utcnow().isoformat() + "Z"
+
+
+@dataclass
+class DeepDive:
+    """A single deep dive topic."""
+    topic: str
+    hook: str
+    analysis: str
+    related_articles: List[str]
+
+
+@dataclass
+class Briefing:
+    """Complete briefing with all three sections."""
+    landscape: Landscape
+    top_5: List[ProcessedArticle]
+    deep_dives: List[DeepDive]
+    articles_analyzed: int
+    sources_count: int
+    generated_at: str = ""
+
+    def __post_init__(self):
+        if not self.generated_at:
+            self.generated_at = datetime.utcnow().isoformat() + "Z"
 
 
 @dataclass
@@ -235,21 +268,47 @@ class ArticleFetcher:
         logger.info(f"Filtered to {len(recent)} recent articles")
         return recent
 
+    def group_by_source(self, articles: List[Article]) -> Dict[str, List[Article]]:
+        """Group articles by their source for per-site agent processing."""
+        grouped: Dict[str, List[Article]] = {}
+        for article in articles:
+            if article.source not in grouped:
+                grouped[article.source] = []
+            grouped[article.source].append(article)
+
+        logger.info(f"Grouped into {len(grouped)} sources")
+        return grouped
+
 
 # ============================================================================
-# LLM PROCESSOR
+# LLM PROCESSOR (New Architecture)
 # ============================================================================
 
 class LLMProcessor:
-    """Process articles using OpenAI LLM."""
+    """
+    Process articles using OpenAI LLM with system prompts.
+
+    New architecture:
+    1. Per-site agents (20 parallel) - summarize and score articles
+    2. Landscape generator - synthesize the big picture
+    3. Top 5 selector - rank by user relevance
+    4. Deep dive generator - analyze hot themes
+    """
 
     def __init__(self, api_key: str, model: str = "gpt-4", base_url: str = "https://api.openai.com/v1"):
         self.api_key = api_key
         self.model = model
         self.base_url = base_url.rstrip('/')
 
-    async def _call_llm(self, prompt: str, max_tokens: int = 500) -> Optional[Dict]:
-        """Make a single LLM API call."""
+    async def _call_llm(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        max_tokens: int = 1000,
+        temperature: float = 0.7,
+        parse_json: bool = True
+    ) -> Optional[Any]:
+        """Make an LLM API call with system prompt."""
         if not self.api_key:
             logger.error("OpenAI API key not configured")
             return None
@@ -261,9 +320,12 @@ class LLMProcessor:
         }
         payload = {
             "model": self.model,
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.7,
-            "max_tokens": max_tokens
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            "temperature": temperature,
+            "max_completion_tokens": max_tokens
         }
 
         try:
@@ -277,8 +339,10 @@ class LLMProcessor:
                     data = await response.json()
                     content = data["choices"][0]["message"]["content"]
 
+                    if not parse_json:
+                        return content.strip()
+
                     # Parse JSON from response
-                    # Handle potential markdown code blocks
                     if "```json" in content:
                         content = content.split("```json")[1].split("```")[0]
                     elif "```" in content:
@@ -293,135 +357,169 @@ class LLMProcessor:
             logger.error(f"LLM call error: {e}")
             return None
 
-    async def summarize_article(self, article: Article) -> Optional[Dict]:
-        """Summarize a single article."""
-        prompt = f"""Summarize this article in 150-200 words. Extract 5 keywords. Provide a one-sentence "Why this matters".
-
-Article Title: {article.title}
-Article Text: {article.text}
-
-Return ONLY valid JSON (no markdown, no code blocks):
-{{
-  "summary": "...",
-  "keywords": ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5"],
-  "why_it_matters": "..."
-}}"""
-
-        return await self._call_llm(prompt)
-
-    async def classify_relevance(self, article: Article, summary: str, user_topics: List[str]) -> Optional[Dict]:
-        """Classify article relevance to user topics."""
-        topics_str = ", ".join(user_topics)
-
-        prompt = f"""Match this article to the user's topics using semantic similarity.
-
-User Topics: {topics_str}
-Article Title: {article.title}
-Article Summary: {summary}
-
-Return ONLY valid JSON:
-{{
-  "matched_topics": ["topic1", "topic2"],
-  "relevance_score": 0.85
-}}
-
-Rules:
-- matched_topics should only include topics from the user's list that are relevant
-- relevance_score should be between 0.0 and 1.0
-- Consider semantic similarity, not just keyword matching"""
-
-        return await self._call_llm(prompt)
-
-    async def cluster_articles(self, articles: List[ProcessedArticle], num_clusters: int = 3) -> List[Cluster]:
-        """Cluster articles by theme."""
-        articles_text = "\n".join([
-            f"- [{i}] {a.title}: {a.summary}"
-            for i, a in enumerate(articles)
-        ])
-
-        prompt = f"""Group these article summaries into exactly {num_clusters} clusters. Each cluster should represent a distinct theme or trend.
-
-Articles:
-{articles_text}
-
-Return ONLY valid JSON:
-{{
-  "clusters": [
-    {{
-      "cluster_id": "cluster_01",
-      "cluster_name": "Theme Name",
-      "indices": [0, 2],
-      "summary": "Brief description of what unites these articles..."
-    }}
-  ]
-}}
-
-Rules:
-- Create exactly {num_clusters} clusters
-- Each article index should appear in exactly one cluster
-- cluster_name should be 2-4 words
-- summary should be 1-2 sentences"""
-
-        result = await self._call_llm(prompt, max_tokens=800)
-
-        if result and "clusters" in result:
-            return [Cluster(**c) for c in result["clusters"]]
-        return []
-
-    async def process_articles_parallel(
+    async def process_site(
         self,
+        source: str,
         articles: List[Article],
         user_topics: List[str]
-    ) -> List[ProcessedArticle]:
-        """Process all articles in parallel."""
-        processed = []
+    ) -> List[Dict]:
+        """
+        Per-site agent: process all articles from one source.
+        Returns list of processed article dicts.
+        """
+        if not articles:
+            return []
 
-        # Summarize all articles in parallel
-        logger.info(f"Summarizing {len(articles)} articles...")
-        summary_tasks = [self.summarize_article(a) for a in articles]
-        summaries = await asyncio.gather(*summary_tasks, return_exceptions=True)
+        # Build prompts with user topics injected
+        system_prompt, user_prompt = build_site_agent_prompt(
+            source=source,
+            user_topics=user_topics,
+            articles=[{"title": a.title, "text": a.text} for a in articles]
+        )
 
-        # Classify relevance in parallel
-        logger.info("Classifying relevance...")
-        classify_tasks = []
-        for article, summary_result in zip(articles, summaries):
-            if isinstance(summary_result, dict):
-                classify_tasks.append(
-                    self.classify_relevance(article, summary_result.get("summary", ""), user_topics)
-                )
-            else:
-                classify_tasks.append(asyncio.coroutine(lambda: None)())
+        logger.info(f"Processing {len(articles)} articles from {source}")
+        result = await self._call_llm(system_prompt, user_prompt, max_tokens=2000)
 
-        classifications = await asyncio.gather(*classify_tasks, return_exceptions=True)
+        if not result:
+            logger.warning(f"No result from site agent for {source}")
+            return []
 
-        # Combine results
-        for i, (article, summary_result, class_result) in enumerate(zip(articles, summaries, classifications)):
-            if isinstance(summary_result, Exception) or not summary_result:
+        # Ensure result is a list
+        if isinstance(result, dict) and "articles" in result:
+            result = result["articles"]
+
+        # Add source to each article
+        for article in result:
+            article["source"] = source
+            # Find original URL
+            for orig in articles:
+                if orig.title == article.get("title"):
+                    article["url"] = orig.url
+                    break
+
+        return result
+
+    async def process_all_sites_parallel(
+        self,
+        articles_by_source: Dict[str, List[Article]],
+        user_topics: List[str]
+    ) -> List[Dict]:
+        """
+        Run all per-site agents in parallel.
+        Returns combined list of processed articles.
+        """
+        logger.info(f"Processing {len(articles_by_source)} sources in parallel")
+
+        tasks = [
+            self.process_site(source, articles, user_topics)
+            for source, articles in articles_by_source.items()
+        ]
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Combine all results
+        all_articles = []
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                logger.error(f"Site agent error: {result}")
                 continue
-            if isinstance(class_result, Exception) or not class_result:
-                continue
+            if result:
+                all_articles.extend(result)
 
-            # Calculate final score
-            base_score = class_result.get("relevance_score", 0.5)
-            topic_boost = min(len(class_result.get("matched_topics", [])) * 0.05, 0.15)
-            final_score = min(base_score + topic_boost, 1.0)
+        logger.info(f"Total processed articles: {len(all_articles)}")
+        return all_articles
 
-            processed.append(ProcessedArticle(
-                source=article.source,
-                url=article.url,
-                title=article.title,
-                published=article.published,
-                text=article.text,
-                summary=summary_result.get("summary", ""),
-                keywords=summary_result.get("keywords", []),
-                why_it_matters=summary_result.get("why_it_matters", ""),
-                matched_topics=class_result.get("matched_topics", []),
-                relevance_score=base_score,
-                final_score=final_score
-            ))
+    async def generate_landscape(
+        self,
+        source_summaries: Dict[str, List[Dict]],
+        user_topics: List[str],
+        total_articles: int
+    ) -> Optional[str]:
+        """
+        Generate the Landscape section - overview of AI today.
+        Returns prose text (not JSON).
+        """
+        system_prompt, user_prompt = build_landscape_prompt(
+            user_topics=user_topics,
+            source_summaries=source_summaries,
+            total_articles=total_articles
+        )
 
-        logger.info(f"Processed {len(processed)} articles successfully")
-        return processed
+        logger.info("Generating landscape summary")
+        result = await self._call_llm(
+            system_prompt,
+            user_prompt,
+            max_tokens=800,
+            temperature=0.8,
+            parse_json=False
+        )
+
+        return result
+
+    async def select_top_5(
+        self,
+        articles: List[Dict],
+        user_topics: List[str]
+    ) -> List[Dict]:
+        """
+        Select top 5 articles for this user.
+        Returns list of 5 articles with why_selected added.
+        """
+        # Pre-sort by relevance score
+        sorted_articles = sorted(
+            articles,
+            key=lambda x: x.get("relevance", 0),
+            reverse=True
+        )[:20]  # Send top 20 candidates to LLM
+
+        # Build lookup by title for enrichment
+        article_lookup = {a.get("title", ""): a for a in sorted_articles}
+
+        system_prompt, user_prompt = build_top5_prompt(
+            user_topics=user_topics,
+            articles=sorted_articles
+        )
+
+        logger.info("Selecting top 5 articles")
+        result = await self._call_llm(system_prompt, user_prompt, max_tokens=1500)
+
+        if result and "top_5" in result:
+            # Enrich LLM response with original article data (source, url, keywords)
+            enriched = []
+            for item in result["top_5"]:
+                title = item.get("title", "")
+                original = article_lookup.get(title, {})
+                enriched.append({
+                    **original,  # source, url, keywords, relevance from original
+                    **item,      # rank, why_selected from LLM
+                })
+            return enriched
+
+        # Fallback: just return top 5 by relevance
+        logger.warning("Top 5 selection failed, using relevance fallback")
+        return sorted_articles[:5]
+
+    async def generate_deep_dives(
+        self,
+        articles: List[Dict],
+        user_topics: List[str]
+    ) -> List[Dict]:
+        """
+        Generate 3 deep dive topics based on what's hot.
+        Returns list of 3 deep dive dicts.
+        """
+        system_prompt, user_prompt = build_deep_dive_prompt(
+            user_topics=user_topics,
+            articles=articles
+        )
+
+        logger.info("Generating deep dives")
+        result = await self._call_llm(system_prompt, user_prompt, max_tokens=2000)
+
+        if result and "deep_dives" in result:
+            return result["deep_dives"]
+
+        return []
 
 
 # ============================================================================
@@ -455,11 +553,11 @@ class EmailSender:
         template_path: str,
         user: UserProfile,
         articles: List[ProcessedArticle],
-        clusters: List[Cluster],
+        clusters: List,
         briefing_date: str,
         articles_analyzed: int
     ) -> str:
-        """Compose HTML email from template."""
+        """Compose HTML email from template (legacy method)."""
         template = self._load_template(template_path)
 
         # Prepare article data
@@ -470,20 +568,10 @@ class EmailSender:
                 "title": a.title,
                 "url": a.url,
                 "summary": a.summary,
-                "why_it_matters": a.why_it_matters,
+                "why_selected": a.why_selected,
                 "keywords": a.keywords,
-                "score": a.final_score
             }
             for a in articles
-        ]
-
-        # Prepare cluster data
-        clusters_data = [
-            {
-                "cluster_name": c.cluster_name,
-                "summary": c.summary
-            }
-            for c in clusters
         ]
 
         return template.render(
@@ -492,10 +580,66 @@ class EmailSender:
             articles_analyzed=articles_analyzed,
             article_count=len(articles),
             top_5_articles=articles_data,
-            clusters=clusters_data,
             user_topics=user.topics,
-            preferences_url="#",  # TODO: Add real URL
-            unsubscribe_url="#"   # TODO: Add real URL
+            preferences_url="#",
+            unsubscribe_url="#"
+        )
+
+    def compose_briefing_email(
+        self,
+        template_path: str,
+        user: UserProfile,
+        briefing: 'Briefing',
+        briefing_date: str
+    ) -> str:
+        """
+        Compose HTML email with the new briefing structure:
+        1. The Landscape
+        2. Your Top 5
+        3. Three Deep Dives
+        """
+        template = self._load_template(template_path)
+
+        # Prepare top 5 data
+        top_5_data = [
+            {
+                "rank": a.rank,
+                "source": a.source,
+                "title": a.title,
+                "url": a.url,
+                "summary": a.summary,
+                "why_selected": a.why_selected,
+                "keywords": a.keywords,
+            }
+            for a in briefing.top_5
+        ]
+
+        # Prepare deep dive data
+        deep_dives_data = [
+            {
+                "topic": d.topic,
+                "hook": d.hook,
+                "analysis": d.analysis,
+                "related_articles": d.related_articles
+            }
+            for d in briefing.deep_dives
+        ]
+
+        return template.render(
+            user_name=user.name or "there",
+            briefing_date=briefing_date,
+            # The Landscape
+            landscape=briefing.landscape.content,
+            # Your Top 5
+            top_5_articles=top_5_data,
+            # Three Deep Dives
+            deep_dives=deep_dives_data,
+            # Meta
+            articles_analyzed=briefing.articles_analyzed,
+            sources_count=briefing.sources_count,
+            user_topics=user.topics,
+            preferences_url="#",
+            unsubscribe_url="#"
         )
 
     def send_email(
@@ -532,11 +676,21 @@ class EmailSender:
 
 
 # ============================================================================
-# MAIN WORKFLOW
+# MAIN WORKFLOW (New Architecture)
 # ============================================================================
 
 class BriefingGenerator:
-    """Main workflow orchestrator."""
+    """
+    Main workflow orchestrator.
+
+    New flow:
+    1. Fetch articles and group by source
+    2. Run 20 per-site agents in parallel (with user topics in system prompt)
+    3. Generate Landscape summary
+    4. Select Top 5 articles
+    5. Generate 3 Deep Dives
+    6. Compose and send email
+    """
 
     def __init__(self, cfg: Config):
         self.config = cfg
@@ -551,22 +705,33 @@ class BriefingGenerator:
     async def generate_briefing_for_user(
         self,
         user: UserProfile,
-        articles: List[Article]
+        articles_by_source: Dict[str, List[Article]],
+        total_articles: int
     ) -> BriefingResult:
-        """Generate and send briefing for a single user."""
+        """
+        Generate and send briefing for a single user.
+
+        Flow:
+        1. Per-site agents process articles (20 parallel)
+        2. Generate Landscape
+        3. Select Top 5
+        4. Generate Deep Dives
+        5. Compose and send email
+        """
         logger.info(f"Generating briefing for {user.email}")
+        logger.info(f"User topics: {user.topics}")
 
         try:
-            # Step 1: Process articles with LLM
-            processed = await self.llm_processor.process_articles_parallel(
-                articles[:self.config.max_articles],
+            # Step 1: Run per-site agents in parallel
+            processed_articles = await self.llm_processor.process_all_sites_parallel(
+                articles_by_source,
                 user.topics
             )
 
-            if not processed:
+            if not processed_articles:
                 return BriefingResult(
                     user_email=user.email,
-                    articles_fetched=len(articles),
+                    articles_fetched=total_articles,
                     articles_processed=0,
                     top_articles=0,
                     email_sent=False,
@@ -574,49 +739,95 @@ class BriefingGenerator:
                     error="No articles could be processed"
                 )
 
-            # Step 2: Sort by score and select top N
-            processed.sort(key=lambda x: x.final_score, reverse=True)
-            top_articles = processed[:self.config.top_n_articles]
+            # Group processed articles by source for landscape
+            processed_by_source: Dict[str, List[Dict]] = {}
+            for article in processed_articles:
+                source = article.get("source", "Unknown")
+                if source not in processed_by_source:
+                    processed_by_source[source] = []
+                processed_by_source[source].append(article)
 
-            # Assign ranks
-            for i, article in enumerate(top_articles):
-                article.rank = i + 1
-
-            # Step 3: Cluster articles
-            clusters = await self.llm_processor.cluster_articles(
-                top_articles,
-                self.config.num_clusters
+            # Step 2: Generate Landscape (runs in parallel with top 5 selection)
+            # Step 3: Select Top 5
+            landscape_task = self.llm_processor.generate_landscape(
+                processed_by_source,
+                user.topics,
+                total_articles
+            )
+            top5_task = self.llm_processor.select_top_5(
+                processed_articles,
+                user.topics
             )
 
-            # Step 4: Compose email
+            landscape_text, top_5 = await asyncio.gather(landscape_task, top5_task)
+
+            if not landscape_text:
+                landscape_text = "Unable to generate landscape summary."
+
+            # Step 4: Generate Deep Dives (based on all processed articles)
+            deep_dives = await self.llm_processor.generate_deep_dives(
+                processed_articles,
+                user.topics
+            )
+
+            # Build the Briefing object
+            briefing = Briefing(
+                landscape=Landscape(content=landscape_text),
+                top_5=[
+                    ProcessedArticle(
+                        source=a.get("source", ""),
+                        url=a.get("url", ""),
+                        title=a.get("title", ""),
+                        summary=a.get("summary", ""),
+                        relevance=a.get("relevance", 0),
+                        keywords=a.get("keywords", []),
+                        why_selected=a.get("why_selected", ""),
+                        rank=a.get("rank", i + 1)
+                    )
+                    for i, a in enumerate(top_5[:5])
+                ],
+                deep_dives=[
+                    DeepDive(
+                        topic=d.get("topic", ""),
+                        hook=d.get("hook", ""),
+                        analysis=d.get("analysis", ""),
+                        related_articles=d.get("related_articles", [])
+                    )
+                    for d in deep_dives[:3]
+                ],
+                articles_analyzed=len(processed_articles),
+                sources_count=len(articles_by_source)
+            )
+
+            # Step 5: Compose email
             briefing_date = datetime.utcnow().strftime("%B %d, %Y")
-            html_body = self.email_sender.compose_email(
+            html_body = self.email_sender.compose_briefing_email(
                 self.config.template_path,
                 user,
-                top_articles,
-                clusters,
-                briefing_date,
-                len(articles)
+                briefing,
+                briefing_date
             )
 
-            # Step 5: Send email
-            subject = f"Your Personalized AI Briefing for {briefing_date}"
+            # Step 6: Send email
+            subject = f"Your AI Briefing for {briefing_date}"
             email_sent = self.email_sender.send_email(user.email, subject, html_body)
 
             return BriefingResult(
                 user_email=user.email,
-                articles_fetched=len(articles),
-                articles_processed=len(processed),
-                top_articles=len(top_articles),
+                articles_fetched=total_articles,
+                articles_processed=len(processed_articles),
+                top_articles=len(briefing.top_5),
                 email_sent=email_sent,
                 status="success" if email_sent else "email_failed"
             )
 
         except Exception as e:
             logger.error(f"Error generating briefing for {user.email}: {e}")
+            import traceback
+            traceback.print_exc()
             return BriefingResult(
                 user_email=user.email,
-                articles_fetched=len(articles),
+                articles_fetched=total_articles,
                 articles_processed=0,
                 top_articles=0,
                 email_sent=False,
@@ -662,14 +873,20 @@ class BriefingGenerator:
 
         # Deduplicate and filter
         articles = self.article_fetcher.deduplicate(articles)
-        articles = self.article_fetcher.filter_recent(articles, hours=24)
+        articles = self.article_fetcher.filter_recent(articles, hours=48)
+        total_articles = len(articles)
 
-        # Step 3: Generate briefings for each user
+        # Step 3: Group by source for per-site agents
+        articles_by_source = self.article_fetcher.group_by_source(articles)
+
+        # Step 4: Generate briefings for each user
         for user in profiles:
-            result = await self.generate_briefing_for_user(user, articles)
+            result = await self.generate_briefing_for_user(
+                user,
+                articles_by_source,
+                total_articles
+            )
             results.append(result)
-
-            # Log result
             logger.info(f"Result for {user.email}: {result.status}")
 
         return results

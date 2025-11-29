@@ -71,31 +71,31 @@ class FeedConfig:
 
 # AI Newsletter RSS Feeds
 RSS_FEEDS = [
-    # Major AI Newsletters
-    FeedConfig("TLDR AI", "https://tldr.tech/ai/rss"),
+    # Substack AI Writers (most reliable)
     FeedConfig("Import AI", "https://importai.substack.com/feed"),
-    FeedConfig("The Neuron", "https://www.theneurondaily.com/feed"),
-    FeedConfig("Ben's Bites", "https://bensbites.beehiiv.com/feed"),
-    FeedConfig("The Rundown AI", "https://www.therundown.ai/feed"),
-    FeedConfig("Superhuman AI", "https://superhumanai.beehiiv.com/feed"),
     FeedConfig("AI Supremacy", "https://aisupremacy.substack.com/feed"),
-    FeedConfig("The Algorithm (MIT)", "https://www.technologyreview.com/feed/"),
-    FeedConfig("Last Week in AI", "https://lastweekin.ai/feed"),
-    FeedConfig("AI Weekly", "https://aiweekly.co/feed"),
-
-    # Substack AI Writers
     FeedConfig("One Useful Thing", "https://www.oneusefulthing.org/feed"),
-    FeedConfig("The Batch (DeepLearning.AI)", "https://www.deeplearning.ai/the-batch/feed/"),
-    FeedConfig("AI Snake Oil", "https://www.aisnakeoil.com/feed"),
+    FeedConfig("AI Snake Oil", "https://aisnakeoil.substack.com/feed"),
     FeedConfig("Interconnects", "https://www.interconnects.ai/feed"),
     FeedConfig("Semi Analysis", "https://semianalysis.substack.com/feed"),
+    FeedConfig("Latent Space", "https://www.latent.space/feed"),
+    FeedConfig("The Gradient", "https://thegradientpub.substack.com/feed"),
+    FeedConfig("Davis Summarizes Papers", "https://dblalock.substack.com/feed"),
+    FeedConfig("Ahead of AI", "https://magazine.sebastianraschka.com/feed"),
 
-    # Tech News with AI Coverage
+    # Tech News with AI Coverage (reliable)
     FeedConfig("The Verge AI", "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml"),
     FeedConfig("Ars Technica AI", "https://feeds.arstechnica.com/arstechnica/technology-lab"),
     FeedConfig("VentureBeat AI", "https://venturebeat.com/category/ai/feed/"),
     FeedConfig("TechCrunch AI", "https://techcrunch.com/category/artificial-intelligence/feed/"),
     FeedConfig("Wired AI", "https://www.wired.com/feed/tag/ai/latest/rss"),
+    FeedConfig("The Algorithm (MIT)", "https://www.technologyreview.com/feed/"),
+    FeedConfig("IEEE Spectrum AI", "https://spectrum.ieee.org/feeds/topic/artificial-intelligence.rss"),
+    FeedConfig("NYT AI", "https://rss.nytimes.com/services/xml/rss/nyt/Technology.xml"),
+
+    # Research & Company Blogs
+    FeedConfig("OpenAI Blog", "https://openai.com/blog/rss.xml"),
+    FeedConfig("Google AI Blog", "https://blog.google/technology/ai/rss/"),
 ]
 
 
