@@ -10,4 +10,3 @@ COPY src/ src/
 EXPOSE 8001
 
 CMD ["python", "src/node1_backend.py"]
-EOF
