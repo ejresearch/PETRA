@@ -61,7 +61,7 @@ class Config:
 
     # Email (Resend - get API key at resend.com)
     resend_api_key: str = os.getenv("RESEND_API_KEY", "")
-    from_email: str = os.getenv("FROM_EMAIL", "briefing@resend.dev")  # Use your verified domain
+    from_email: str = os.getenv("FROM_EMAIL", "Petra@ellejansick.com")
 
     # Paths
     profiles_path: str = os.getenv("PROFILES_PATH", "user_profiles.jsonl")
