@@ -64,6 +64,17 @@ async def health():
     }
 
 
+@app.get("/trigger")
+async def trigger_briefings():
+    """
+    Simple GET endpoint for external cron services (cron-job.org, etc).
+
+    Set up your cron service to hit:
+    https://petra-generator.onrender.com/trigger
+    """
+    return await generate_briefings()
+
+
 @app.post("/generate", response_model=GenerateResponse)
 async def generate_briefings(
     request: GenerateRequest = GenerateRequest(),
